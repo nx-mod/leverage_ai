@@ -71,6 +71,7 @@ STATE_FILE = pathlib.Path.home() / ".leverage_usage.json"
 CACHE_DIR = pathlib.Path.home() / ".leverage_cache"
 MEMORY_FILE = pathlib.Path.home() / ".leverage_memory.json"
 CONVO_FILE = pathlib.Path.home() / ".leverage_convo.json"
+AGENT_HISTORY_FILE = pathlib.Path.home() / ".leverage_agent_history.json"
 WORK_DIR = pathlib.Path.home() / "ai_output"
 
 # Create directories if they don't exist

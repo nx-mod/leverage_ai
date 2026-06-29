@@ -3,7 +3,7 @@
 
 import json
 import time
-from leverage_ai.config import MEMORY_FILE, CONVO_FILE
+from leverage_ai.config import MEMORY_FILE, CONVO_FILE, AGENT_HISTORY_FILE
 
 # -- Memory --
 
@@ -69,3 +69,24 @@ def get_conversation_context(convo, max_turns=3):
         prefix = "You" if msg["role"] == "user" else "Assistant"
         lines.append(f"{prefix}: {msg['content'][:200]}")
     return "\n".join(lines) if lines else ""
+
+
+# -- Agent History (OpenAI-style messages for real function calling) --
+# Kept entirely separate from the text-based convo above: that format is
+# plain {role, content} strings replayed into a prompt, while this one
+# can contain tool_calls / tool role messages that only make sense to a
+# real function-calling API. Mixing the two formats would break both.
+
+def load_agent_history():
+    if AGENT_HISTORY_FILE.exists():
+        try:
+            return json.loads(AGENT_HISTORY_FILE.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def save_agent_history(history, max_messages=40):
+    if len(history) > max_messages:
+        history = history[-max_messages:]
+    AGENT_HISTORY_FILE.write_text(json.dumps(history, indent=2))

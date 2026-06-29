@@ -22,7 +22,9 @@ def pipeline_quick(idea: str, state: Dict[str, Any], convo: Optional[List[Dict[s
     
     convo_context = get_conversation_context(convo) if convo else ""
     
-    prompt = "Answer concisely and directly. No preamble. 2-3 sentences max."
+    prompt = ("You have no filesystem/tool access in this mode - if asked about local files "
+              "or running commands, say so rather than guessing. "
+              "Answer concisely and directly. No preamble. 2-3 sentences max.")
     if convo_context:
         prompt += f"\n\nRecent conversation:\n{convo_context}"
     prompt += f"\n\nQuestion: {idea}"
@@ -30,18 +32,67 @@ def pipeline_quick(idea: str, state: Dict[str, Any], convo: Optional[List[Dict[s
     run_stage(CHAIN_QUICK, prompt, 200, state, "Quick Answer", use_cache=True, convo=convo)
 
 
-def pipeline_chat(idea: str, state: Dict[str, Any], convo: Optional[List[Dict[str, str]]] = None):
-    """Handle conversational chat requests."""
+TOOL_INSTRUCTIONS = """You have NO ability to see, read, or access the local filesystem, \
+run commands, or remember anything beyond what's shown to you in this prompt. You are a \
+text-completion API call with no persistent state and no tools unless explicitly given below.
+
+You DO have access to 3 tools. To use one, end your reply with a tag containing a REAL, \
+SPECIFIC value - never copy the example text literally, always substitute the actual path \
+or command the user is asking about.
+
+Tool 1 - read a file. Example: if the user asks to read their readme, end with:
+[[READ_FILE: ~/leverage_ai/README.md]]
+
+Tool 2 - list a directory. Example: if the user asks what's in their home folder, end with:
+[[LIST_DIR: ~]]
+
+Tool 3 - run a shell command. Example: if the user asks to check git status, end with:
+[[BASH: git status]]
+
+Rules:
+- Only ONE tag per reply, only when the user is actually asking to read/list/run something.
+- The text after the colon must be a real path or real command, never the literal words \
+"path", "shell command", "filename", or similar placeholders - those will fail.
+- If you don't know the exact path, guess a reasonable real one (e.g. ~/README.md, ~, \
+~/project_name) rather than typing a placeholder word.
+- Never claim you already read, opened, or saw something unless a tool result for it \
+appears above in this conversation. If a tool call just failed, tell the user plainly what \
+failed and try a corrected real value - don't pretend it worked or that you "remember" \
+unrelated past attempts."""
+
+
+def pipeline_chat(idea: str, state: Dict[str, Any], convo: Optional[List[Dict[str, str]]] = None,
+                   tool_result: Optional[str] = None):
+    """LEGACY / UNUSED in the main flow as of the agent.py rewrite.
+
+    This text-tag approach ([[READ_FILE: ...]] etc, parsed by
+    tools.extract_tool_call) had several hard-to-fully-fix failure modes
+    on small/fast models: placeholder echoing, multiple tags in one
+    reply with ambiguous priority, and pre-tool-call confabulation. It's
+    superseded by leverage_ai.agent.run_agent_turn, which uses Groq's
+    real structured function-calling API instead of free-text tags.
+
+    Left in place (not deleted) as a manual fallback in case the
+    function-calling API path is ever unavailable - not currently
+    wired into __main__.py's dispatch loop.
+    """
     logger.debug("Chat pipeline")
     
     convo_context = get_conversation_context(convo) if convo else ""
     
-    prompt = "Be friendly, helpful, and concise. One paragraph max. Respond naturally to the user."
+    prompt = TOOL_INSTRUCTIONS + "\n\nBe friendly, helpful, and concise. One paragraph max."
     if convo_context:
         prompt += f"\n\nRecent conversation:\n{convo_context}"
+    if tool_result:
+        prompt += (f"\n\nTool result (this is REAL data, already retrieved):\n{tool_result}\n\n"
+                   f"Answer the user's question using the SPECIFIC contents above - name actual "
+                   f"file/directory names or actual command output, don't describe it vaguely "
+                   f"(e.g. say \"I see config.py, README.md, and .git\" not \"some configuration "
+                   f"files\"). Do not emit another tool tag unless you genuinely need a DIFFERENT "
+                   f"piece of information than what's already shown above.")
     prompt += f"\n\nMessage: {idea}"
     
-    run_stage(CHAIN_CHAT, prompt, 300, state, "Response", use_cache=True, convo=convo)
+    return run_stage(CHAIN_CHAT, prompt, 400, state, "Response", use_cache=(tool_result is None), convo=None)
 
 
 def pipeline_code(idea: str, state: Dict[str, Any], noexec: bool = False, 

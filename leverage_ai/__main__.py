@@ -8,11 +8,15 @@ import sys
 import logging
 from leverage_ai.config import ALL_PROVIDERS
 from leverage_ai.state import load_state, save_state
-from leverage_ai.memory import load_memory, load_conversation, add_to_conversation
+from leverage_ai.memory import (
+    load_memory, load_conversation, add_to_conversation,
+    load_agent_history, save_agent_history,
+)
 from leverage_ai.orchestrator import classify, usage_log
-from leverage_ai.pipelines import pipeline_chat, pipeline_quick, pipeline_code, pipeline_write, pipeline_analyze
+from leverage_ai.pipelines import pipeline_quick, pipeline_code, pipeline_write, pipeline_analyze
 from leverage_ai.commands import handle_memory_command
 from leverage_ai.usage import banner, show_usage
+from leverage_ai.agent import run_agent_turn
 
 
 def main():
@@ -50,6 +54,7 @@ def main():
     state = load_state()
     mem = load_memory()
     convo = load_conversation()
+    agent_history = load_agent_history()
 
     # Check for required API keys
     import os
@@ -111,7 +116,15 @@ def main():
         print(f"  [{kind}]")
 
         if kind == "chat":
-            pipeline_chat(idea, state, convo)
+            answer, new_messages = run_agent_turn(idea, agent_history)
+            agent_history.extend(new_messages)
+            save_agent_history(agent_history)
+            if answer:
+                from leverage_ai.colors import section
+                print(f"\n{section('─' * 40)}")
+                print(f"{section('Response')}")
+                print(f"{section('─' * 40)}")
+                print(answer)
         elif kind == "quick":
             pipeline_quick(idea, state, convo)
         elif kind == "code":
@@ -119,7 +132,23 @@ def main():
         elif kind == "write":
             pipeline_write(idea, state, mem)
         elif kind == "analyze":
-            pipeline_analyze(idea, state, mem)
+            # Project-summary / "analyze this directory" style requests
+            # need real filesystem access too - route through the agent
+            # rather than the tool-free analyze pipeline.
+            tool_phrases = ["this project", "this directory", "this folder", "this repo",
+                            "my project", "my code", "the codebase", "this codebase"]
+            if any(p in idea.lower() for p in tool_phrases):
+                answer, new_messages = run_agent_turn(idea, agent_history)
+                agent_history.extend(new_messages)
+                save_agent_history(agent_history)
+                if answer:
+                    from leverage_ai.colors import section
+                    print(f"\n{section('─' * 40)}")
+                    print(f"{section('Response')}")
+                    print(f"{section('─' * 40)}")
+                    print(answer)
+            else:
+                pipeline_analyze(idea, state, mem)
 
         # Track conversation
         if usage_log and usage_log[-1][0] != "Cache":

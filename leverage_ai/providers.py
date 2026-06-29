@@ -46,6 +46,36 @@ def groq(prompt: str, model: str = "llama-3.1-8b-instant", max_tokens: int = 500
         {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
         timeout=TIMEOUT)
 
+
+def groq_tools(messages: list, tools: list, model: str = "llama-3.3-70b-versatile",
+               max_tokens: int = 800, tool_choice: str = "auto") -> requests.Response:
+    """Groq API with real OpenAI-compatible function calling.
+
+    Unlike groq() above, this takes a full messages list (so multi-turn
+    tool-call/tool-result history can be sent properly) and a tools
+    schema. The model either returns a normal text reply or a
+    message.tool_calls list with structured {name, arguments} - no text
+    tag parsing, no placeholder-echoing failure mode, because the model
+    isn't free-generating the call syntax.
+
+    Defaults to llama-3.3-70b-versatile rather than the 8b-instant model
+    used elsewhere: tool-use instruction-following is meaningfully worse
+    on the smaller model, and 70b is still free-tier on Groq.
+    """
+    if not GROQ_KEY:
+        raise ProviderAuthError("Groq: No API key configured (GROQ_API_KEY)")
+
+    return call("POST", "https://api.groq.com/openai/v1/chat/completions",
+        {"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+        {
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "max_tokens": max_tokens,
+        },
+        timeout=LONG_TIMEOUT)
+
 def cloudflare(prompt: str, model: str = "@cf/meta/llama-3.2-3b-instruct", max_tokens: int = 500) -> requests.Response:
     """Cloudflare Workers AI."""
     if not CF_KEY:

@@ -199,7 +199,15 @@ def classify(idea: str) -> str:
     """Classify user request into pipeline type."""
     kw = idea.lower()
     words = set(kw.split())
-    
+
+    # File / command requests - route to chat, where tool-calling is wired up
+    tool_triggers = ["read the", "read my", "open the", "open my", "show me the contents",
+                      "list the", "list my", "ls ", "run the command", "run this command",
+                      "see my local files", "see my files", "check the file", "what's in the file",
+                      "what's in this file", "cat "]
+    if any(trigger in kw for trigger in tool_triggers):
+        return "chat"
+
     # Memory commands
     memory_words = {"remember", "forget", "show memory", "clear memory"}
     if any(word in kw for word in memory_words):
