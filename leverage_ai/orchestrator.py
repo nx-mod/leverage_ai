@@ -176,7 +176,7 @@ def try_chain(chain: List[str], prompt: str, max_tokens: int,
         logger.info(f"{prov}: Success ({usage.get('prompt_tokens', 0)} -> {usage.get('completion_tokens', 0)} tokens)")
         model_name = data.get("model", kwargs.get("model", prov))
         usage_log.append((prov, model_name, usage))
-        print(f"  {success('✓')} {provider(prov)} {token_count(f'{usage.get(\"prompt_tokens\", 0)}->{usage.get(\"completion_tokens\", 0)}')}")
+        print(f"  {success(chr(10003))} {provider(prov)} {token_count(str(usage.get("prompt_tokens", 0)) + "->" + str(usage.get("completion_tokens", 0)))}")
         return prov, content
     
     # All providers failed
@@ -235,7 +235,7 @@ def classify(idea: str) -> str:
 
 # ── Pipeline Stages ──
 
-def run_stage(chain: List[str], prompt: str, max_tokens: int, state: Dict[str, Any],
+def run_stage(provider_chain: List[str], prompt: str, max_tokens: int, state: Dict[str, Any],
               label: str = "", use_cache: bool = True, convo: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
     """Execute a single pipeline stage with intelligent chain management.
     
@@ -273,15 +273,15 @@ def run_stage(chain: List[str], prompt: str, max_tokens: int, state: Dict[str, A
     
     # Heal depleted providers
     depleted = state.get("depleted", [])
-    active_chain = [p for p in chain if p not in depleted]
+    active_chain = [p for p in provider_chain if p not in depleted]
     
     if not active_chain:
         print(f"  {err_color('ERROR')} All providers in chain are depleted!")
         return None
     
-    if len(active_chain) < len(chain):
+    if len(active_chain) < len(provider_chain):
         skipped = [p for p in chain if p in depleted]
-        chain_str = chain(' → '.join(active_chain[:3]))
+        chain_str = _chain_fmt(' → '.join(active_chain[:3]))
         print(f"  {chain_str} {warn_color(f'(skipped: {len(skipped)})')}")
     else:
         print(f"  {chain(' → '.join(active_chain[:3]))}")

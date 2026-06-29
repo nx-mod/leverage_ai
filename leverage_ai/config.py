@@ -4,16 +4,16 @@
 import os
 import sys
 import pathlib
-from dotenv import load_dotenv
 
-# Load .env file if it exists
-ENV_FILE = pathlib.Path.home() / ".leverage_ai.env"
-if ENV_FILE.exists():
-    load_dotenv(dotenv_path=ENV_FILE, override=False)
-
-# Also check for .env in current directory
-if pathlib.Path(".env").exists():
-    load_dotenv(override=False)
+try:
+    from dotenv import load_dotenv
+    ENV_FILE = pathlib.Path.home() / ".leverage_ai.env"
+    if ENV_FILE.exists():
+        load_dotenv(dotenv_path=ENV_FILE, override=False)
+    if pathlib.Path(".env").exists():
+        load_dotenv(override=False)
+except ImportError:
+    pass
 
 # -- API Keys (from environment only, NO fallbacks) --
 GROQ_KEY = os.getenv("GROQ_API_KEY")
