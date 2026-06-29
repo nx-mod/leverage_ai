@@ -25,6 +25,7 @@ from leverage_ai.colors import (
 logger = logging.getLogger("leverage_ai.orchestrator")
 
 usage_log: List[Tuple[str, str, Dict[str, Any]]] = []
+FAILED_THIS_SESSION = set()
 
 # ── Chain Management ──
 
@@ -65,6 +66,8 @@ def try_chain(chain: List[str], prompt: str, max_tokens: int,
     
     for prov in rotated:
         # Check if provider is marked as depleted
+        if prov in FAILED_THIS_SESSION:
+            continue
         if prov in state.get("depleted", []):
             skipped.append(prov)
             continue
@@ -109,6 +112,8 @@ def try_chain(chain: List[str], prompt: str, max_tokens: int,
             
         except ProviderConnectionError as e:
             logger.warning(f"{prov}: Connection error - {e}")
+            FAILED_THIS_SESSION.add(prov)
+            print(f"  {provider(prov)} {warn_color("Connection error - Blacklisted for session")}")
             print(f"  {provider(prov)} {warn_color('Connection error')}, trying next...")
             continue
             

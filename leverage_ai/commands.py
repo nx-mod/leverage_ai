@@ -1,3 +1,4 @@
+from leverage_ai.file_utils import get_file_content
 #!/usr/bin/env python3
 """Interactive command handlers for Leverage AI."""
 
