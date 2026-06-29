@@ -13,7 +13,15 @@ try:
     if pathlib.Path(".env").exists():
         load_dotenv(override=False)
 except ImportError:
-    pass
+    ENV_FILE = pathlib.Path.home() / ".leverage_ai.env"
+    if ENV_FILE.exists():
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    if key not in os.environ:
+                        os.environ[key] = val
 
 # -- API Keys (from environment only, NO fallbacks) --
 GROQ_KEY = os.getenv("GROQ_API_KEY")

@@ -280,8 +280,8 @@ def run_stage(provider_chain: List[str], prompt: str, max_tokens: int, state: Di
         return None
     
     if len(active_chain) < len(provider_chain):
-        skipped = [p for p in chain if p in depleted]
-        chain_str = _chain_fmt(' → '.join(active_chain[:3]))
+        skipped = [p for p in provider_chain if p in depleted]
+        chain_str = chain(' → '.join(active_chain[:3]))
         print(f"  {chain_str} {warn_color(f'(skipped: {len(skipped)})')}")
     else:
         print(f"  {chain(' → '.join(active_chain[:3]))}")
