@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Leverage AI v2.0 - Multi-Provider AI Orchestrator
+
+Entry point. Run with: python -m leverage_ai
+"""
+
+import sys
+import logging
+from leverage_ai.config import ALL_PROVIDERS
+from leverage_ai.state import load_state, save_state
+from leverage_ai.memory import (
+    load_memory, load_conversation, add_to_conversation,
+    load_agent_history, save_agent_history,
+)
+from leverage_ai.orchestrator import classify, usage_log
+from leverage_ai.pipelines import pipeline_quick, pipeline_code, pipeline_write, pipeline_analyze
+from leverage_ai.commands import (
+    handle_memory_command, handle_settings_command,
+    handle_providers_command, handle_models_command,
+)
+from leverage_ai.settings import load_settings
+from leverage_ai.provider_settings import load_provider_settings
+from leverage_ai.chain_settings import load_chain_settings
+from leverage_ai.usage import banner, show_usage
+from leverage_ai.agent import run_agent_turn
+
+
+def main():
+    noexec = False
+    debug = False
+
+    for arg in sys.argv[1:]:
+        if arg in ("--noexec", "-n"):
+            noexec = True
+        elif arg in ("--debug", "-d"):
+            debug = True
+        elif arg in ("--help", "-h"):
+            print("Leverage AI v2.0 - Multi-Provider Assistant")
+            print("\nUsage: python -m leverage_ai [options]")
+            print("\nOptions:")
+            print("  --noexec, -n   Skip running saved code files")
+            print("  --debug, -d    Enable debug logging")
+            print("  --help, -h     Show this help message")
+            print("\nCommands (type in interactive mode):")
+            print("  remember X     Store a fact or preference")
+            print("  forget X       Remove mentions of X from memory")
+            print("  show memory    Display all stored memories")
+            print("  clear memory   Wipe all stored memories")
+            print("  usage          Check API usage and limits")
+            print("  /settings      Open settings panel (sandboxing, auto-run, cache, etc)")
+            print("  /providers     Enable/disable providers, view/set API keys")
+            print("  /models        Enable/disable providers per pipeline chain")
+            print("  quit/q         Exit")
+            return
+
+    # Configure logging
+    log_level = logging.DEBUG if debug else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(name)s %(levelname)s: %(message)s"
+    )
+
+    state = load_state()
+    mem = load_memory()
+    convo = load_conversation()
+    agent_history = load_agent_history()
+    settings = load_settings()
+    provider_settings = load_provider_settings()
+    chain_settings = load_chain_settings()
+    if settings.get("debug_logging") and not debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Check for required API keys
+    import os
+    missing_keys = []
+    for prov, keyname in [("Cloudflare", "CLOUDFLARE_API_KEY"), ("Groq", "GROQ_API_KEY"),
+                          ("Charm Hyper", "HYPER_API_KEY"), ("OpenRouter", "OPENROUTER_API_KEY"),
+                          ("Gemini", "GOOGLE_API_KEY"), ("DeepSeek", "DEEPSEEK_API_KEY"),
+                          ("Mistral", "MISTRAL_API_KEY"), ("HuggingFace", "HUGGINGFACE_API_KEY")]:
+        val = os.getenv(keyname)
+        if not val:
+            missing_keys.append(prov)
+
+    providers_needing_keys = [p for p in ALL_PROVIDERS if p not in ("Qwen",)]
+    if len(missing_keys) == len(providers_needing_keys):
+        print("\n  [ERROR] No API keys configured!")
+        print("  Copy .env.example to ~/.leverage_ai.env and fill in at least one key.")
+        print("  Example: export GROQ_API_KEY=gsk_...")
+        sys.exit(1)
+    elif missing_keys:
+        for prov in missing_keys:
+            print(f"  [warn] {prov}: API key not set (will skip)")
+
+    banner(state, noexec)
+
+    # Show example queries on first run
+    if not state.get("seen_welcome"):
+        print("\n  Example queries:")
+        print("    - explain how DNS works")
+        print("    - build a Python web scraper")
+        print("    - write a haiku about coding")
+        print("    - what's the capital of France?")
+        print()
+        state["seen_welcome"] = True
+        save_state(state)
+
+    while True:
+        try:
+            idea = input("\n> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\nGoodbye!")
+            break
+        if idea.lower() in ["quit", "q"]:
+            print("\nGoodbye!")
+            break
+        if not idea:
+            continue
+
+        # Settings panel - open a sub-loop until 'done'
+        if idea.strip().lower() == "/settings":
+            handle_settings_command(idea, settings)
+            while True:
+                try:
+                    sub = input("  settings> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if not handle_settings_command(sub, settings):
+                    break
+            continue
+
+        # Providers panel - enable/disable + API key management
+        if idea.strip().lower() == "/providers":
+            handle_providers_command(idea, provider_settings)
+            while True:
+                try:
+                    sub = input("  providers> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if not handle_providers_command(sub, provider_settings):
+                    break
+            continue
+
+        # Models panel - per-chain provider toggles (two-level nav)
+        if idea.strip().lower() == "/models":
+            models_nav = {"chain": None}
+            handle_models_command(idea, chain_settings, models_nav)
+            while True:
+                try:
+                    sub = input("  models> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if not handle_models_command(sub, chain_settings, models_nav):
+                    break
+            continue
+
+        # Handle memory / special commands
+        if handle_memory_command(idea, mem):
+            continue
+
+        usage_log.clear()
+        kind = classify(idea)
+
+        if kind == "memory":
+            if handle_memory_command(idea, mem):
+                continue
+
+        print(f"  [{kind}]")
+
+        if kind == "chat":
+            answer, new_messages = run_agent_turn(idea, agent_history)
+            agent_history.extend(new_messages)
+            save_agent_history(agent_history)
+            if answer:
+                from leverage_ai.colors import section
+                print(f"\n{section('─' * 40)}")
+                print(f"{section('Response')}")
+                print(f"{section('─' * 40)}")
+                print(answer)
+        elif kind == "quick":
+            pipeline_quick(idea, state, convo)
+        elif kind == "code":
+            pipeline_code(idea, state, noexec, mem, settings)
+        elif kind == "write":
+            pipeline_write(idea, state, mem)
+        elif kind == "analyze":
+            # Project-summary / "analyze this directory" style requests
+            # need real filesystem access too - route through the agent
+            # rather than the tool-free analyze pipeline.
+            tool_phrases = ["this project", "this directory", "this folder", "this repo",
+                            "my project", "my code", "the codebase", "this codebase"]
+            if any(p in idea.lower() for p in tool_phrases):
+                answer, new_messages = run_agent_turn(idea, agent_history)
+                agent_history.extend(new_messages)
+                save_agent_history(agent_history)
+                if answer:
+                    from leverage_ai.colors import section
+                    print(f"\n{section('─' * 40)}")
+                    print(f"{section('Response')}")
+                    print(f"{section('─' * 40)}")
+                    print(answer)
+            else:
+                pipeline_analyze(idea, state, mem)
+
+        # Track conversation
+        if usage_log and usage_log[-1][0] != "Cache":
+            add_to_conversation(convo, "user", idea)
+
+        show_usage(state)
+
+
+if __name__ == "__main__":
+    main()
